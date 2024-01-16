@@ -1,0 +1,9 @@
+version: '2.2'
+
+services:
+  ia:
+    image: kilabor/ia-project
+    container_name: ia-project
+    tty: true
+    volumes:
+      - ./src/:/home/user/src/ # map python source
