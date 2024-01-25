@@ -33,9 +33,26 @@ class PreparationState(State):
 
         query_list = query_list.split("\n")
         # change to smaller subset
-        temp = query_list[1:5]
-        #temp.append("Moodle")
-        self.agent.set("query_list", temp)
+        self.agent.set("query_list", query_list[1:5])
+
+        gold = functions.read_file("./exercise3/data/gold.txt")
+
+        gold_list = gold.split("\n")[1:]
+        gold_dict = {}
+        i = 0
+        j = 1
+        while i < 240:
+            gold_dict.update({j: gold_list[i:i+40]})
+            j += 1
+            i += 40
+        gold_std = []
+        #print(query_list[1])
+        for key in gold_dict:
+            if query_list[1] in gold_dict[key]:
+                #print("test"*10)
+                gold_std = gold_dict[key]
+        #print(gold_std)
+        self.agent.set("gold_std", gold_std)
         # Move to next state
         self.set_next_state(STATE_SEND_QUERY)
 
@@ -69,6 +86,17 @@ class AwaitAnswerState(State):
         # Print answer
         print("For Agent", self.agent.name, "with query", self.agent.get("query"), "\n")
         print("Got:", "\n", msg.body)
+        docs = msg.body.split("<")[1].split(">")[0]
+        #print(docs)
+        reward = 0
+        for el in self.agent.get("gold_std"):
+            if str.strip(el) in docs and reward < 10:
+                reward += 2 #reward += 1
+
+        msg = Message(to=self.agent.get("query_target"))
+        # Send message to IR Agent with query and location of tokenized query
+        msg.body = "Your reward for this query answering is <" + str(reward) + ">"
+        await self.send(msg)
         # Possible wait for a random time
         rand = 1 #randint(0, 5)
         for i in range(0, rand):

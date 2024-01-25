@@ -33,7 +33,7 @@ class PreparationState(State):
         # Load document as string
         sell_list = functions.read_file("./exercise3/data/" + self.agent.get("documents_file") + ".txt")
         # Change string into list
-        sell_list = sell_list.split("\n")[1:5]
+        sell_list = sell_list.split("\n")[1:10]
         # Store sellDocuments in the knowledge base of agent, can be used for a smaller set of documents
         self.agent.set("sellDocuments", sell_list)
         print(sell_list)
@@ -56,7 +56,7 @@ class GiveDocState(State):
         for bidder in self.agent.get("bidders_list"):
             msg = Message(to=bidder)
             # Only the title, not entire doc is sent to the bidder
-            msg.body = "The document for sale is '" + str(sell_item) + "'"
+            msg.body = "The document for sale is <" + str(sell_item) + ">"
 
             await self.send(msg)
         # Move to next state

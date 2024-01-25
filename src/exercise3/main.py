@@ -48,15 +48,17 @@ async def main():
 	# IR agents
 	ir1 = IRAgent("bidder1@localhost", "bidder1")
 	ir1.set("corpus_file", "corpus")
-	#ir1.set("strategy", IRAgent.STRATEGY_MAX_AMOUNT)
+	ir1.set("strategy", "standard")
 	ir1.set("competitor_sets", [q for q in all_queries if q != queryset_1])
+	ir1.set("competitor_sets_all", [q for q in all_queries if q != queryset_1])
 	ir1.set("auctioneer", "auctioneer@localhost")
 	await ir1.start()
 
 	ir2 = IRAgent("bidder2@localhost", "bidder2")
 	ir2.set("corpus_file", "corpus")
-	#ir2.set("strategy", IRAgent.STRATEGY_SIMPLE)
+	ir2.set("strategy", "standard")
 	ir2.set("competitor_sets", [q for q in all_queries if q != queryset_2])
+	ir2.set("competitor_sets_all", [q for q in all_queries if q != queryset_2])
 	ir2.set("auctioneer", "auctioneer@localhost")
 	await ir2.start()
 

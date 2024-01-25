@@ -55,7 +55,7 @@ def get_discrepancy(distances, corpus_title, database_all, query_title):
         return documents[:min(10, len(corpus_title))]
     elif distances[0] <= 0.5:
         return ["TFIDF"]
-        docs = []
+        docs = []  # TODO: anpassen
         if query_title in corpus_title:
             docs.append(query_title)
         corpus_title.append(query_title)
@@ -71,7 +71,7 @@ def get_discrepancy(distances, corpus_title, database_all, query_title):
             docs.append(d[0])
         return docs[:min(10, len(corpus_title))]
     else:
-        return "incompatible, please ask another agent"
+        return "Incompatible, please ask another agent"
 
 
 # Calculate value for agents
@@ -142,16 +142,28 @@ def make_lda(lda_model_akt: bool = None):
 
 # TODO: Bessere Strategie für score überlegen???
 # Get value for a specific score
-def get_value(score: float, opponent_score: float) -> float:
+def get_value(score: float, opponent_score: float, strategy, distances, buy_doc) -> int:
     if score <= 0.015:
-        return 0.0
-    elif opponent_score <= 0.015:
-        return 0.1 #round(score**(1/100) * 5, 4)
-    else:
-        price = round(score**(1/100) * 5, 4)
-        opponent_price = round(opponent_score**(1/100) * 5, 4)
-        if price > opponent_price:
-            return opponent_price + 0.1
+        return 0
+    elif strategy == "standard":
+        x = 100 * score ** (1/100)
+        value = x if x < 96.1 else max(96.1 + score*2, 100)
+        return round(value)  # round(score**(1/100) * 5, 4)
+    elif strategy == "money_optimized":
+        if opponent_score <= 0.008:
+            return 1
+        else:
+            x = 10 * score ** (1 / 100)
+            return round(x) + 2  # TODO: Offset für opp score?
+    elif strategy == "reward_orient":
+        distances[1].sort(key=lambda dist: dist[1])
+        dist = distances[1]
+        val = 50
+        for el in dist[:10]:
+            if buy_doc == el:
+                return val
+            val -= 5
+        return 0
 
 
 # Create a gensim dictionary to provide a gensim bow for the models, and a database dictionary
