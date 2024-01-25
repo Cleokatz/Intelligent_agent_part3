@@ -150,8 +150,10 @@ class AwaitDocState(State):
 						opponent_score = max(opponent_score, opp_score)
 				#print(score, opponent_score, self.agent.name)
 				# TODO: Pricefkt wie am besten gestalten
-				distances = helpfunc.get_distances(corpus_titles=self.agent.get("corpus_list"), query_title=msg.body,
+
+				distances = helpfunc.get_distances(corpus_titles=self.agent.get("corpus_list"), query_title=self.agent.get("query")[0],
 												   lda_model=self.agent.get("lda_model"), database_all=database)
+
 				price = helpfunc.get_value(score, opponent_score, self.agent.get("strategy"), distances, buy_doc)
 			# Send message with the price to the auctioneer
 			msg = Message(to=self.agent.get("auctioneer"))

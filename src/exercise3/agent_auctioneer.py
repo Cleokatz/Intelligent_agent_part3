@@ -87,6 +87,7 @@ class AwaitBidState(State):
             for bidder in self.agent.get("bidders_list"):
                 msg = Message(to=bidder)
                 msg.body = "No bids for the documents. Eject this. Going to the next one."
+
                 await self.send(msg)
             # List of selling documents is empty -> end auction
             if not self.agent.get("sellDocuments"):
