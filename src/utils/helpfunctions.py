@@ -41,31 +41,31 @@ def get_distances(corpus_titles, query_title, lda_model, database_all):
 
 
 # Return documents based on specific distances
-def get_discrepancy(distances, corpus_title, database_all, query_title):
+def get_discrepancy(distances, corpus_title, database_all, query_title, dct):
     distances[1].sort(key=lambda dist: dist[1])
     # Optional print
     #print(query_title)
     #print(distances)
     if distances[0] <= 0.35:
         documents = []
-        if query_title in corpus_title:
-            documents.append(query_title)
+        for que in query_title:
+            if que in corpus_title:
+                documents.append(que)
         for tu in distances[1]:
             documents.append(tu[0])
         return documents[:min(10, len(corpus_title))]
     elif distances[0] <= 0.5:
-        return ["TFIDF"]
-        docs = []  # TODO: anpassen
+        docs = []
         if query_title in corpus_title:
             docs.append(query_title)
-        corpus_title.append(query_title)
-        tf_idf = calc_tf_idf(database_all, corpus_title)
+        corpus_title.extend(query_title)
         documents = []
         for key in distances[1]:
-            value = valuating(database_all, [key[0]], tf_idf, query_title)
+            score = calculate_score(dct, database_all, corpus_title, query_title, key[0])
+            value = 10 * score ** (1 / 100)
             documents.append((key[0], key[1]*value))
         # Optional print
-        # print(documents)
+        #print(documents)
         documents.sort(key=lambda dist: dist[1])
         for d in documents:
             docs.append(d[0])
@@ -140,7 +140,6 @@ def make_lda(lda_model_akt: bool = None):
     pyLDAvis.save_html(vis, 'lda.html')
 
 
-# TODO: Bessere Strategie für score überlegen???
 # Get value for a specific score
 def get_value(score: float, opponent_score: float, strategy, distances, buy_doc) -> int:
     if score <= 0.015:
@@ -153,17 +152,23 @@ def get_value(score: float, opponent_score: float, strategy, distances, buy_doc)
         if opponent_score <= 0.008:
             return 1
         else:
-            x = 10 * score ** (1 / 100)
-            return round(x) + 2  # TODO: Offset für opp score?
+            x = 10 * opponent_score ** (1 / 100)
+            return round(x) + 2
     elif strategy == "reward_orient":
         distances[1].sort(key=lambda dist: dist[1])
         dist = distances[1]
         val = 50
-        for el in dist[:10]:
-            if buy_doc == el:
+        #print(distances)
+        #print(buy_doc)
+        for el in dist[:20]:
+            #print(el[0])
+            #print(buy_doc == el[0])
+            if buy_doc == el[0]:
                 return val
             val -= 5
-        return 0
+        if val == 0:
+            val = 1
+        return max(round(val*score), 100)
 
 
 # Create a gensim dictionary to provide a gensim bow for the models, and a database dictionary

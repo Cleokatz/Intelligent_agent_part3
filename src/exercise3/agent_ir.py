@@ -13,6 +13,7 @@ import os
 # TODO: 2 Stragtegy minimize money spend + getting docs
 #  ff Strategy price as high as value
 #  Strategy --> reward dependent?
+# TODO: ir sammeln und später abarbeiten?
 STATE_PREPARATION = "STATE_PREPARATION"
 # Added states
 STATE_AWAIT_DOC = "STATE_AWAIT_DOC"
@@ -45,17 +46,19 @@ class PreparationState(State):
 		dct, database = helpfunc.create_dictionaries()
 		self.agent.set("dct_database", (dct, database))
 		# Set corpus_list
-		# TODO: Als klasse mit für gegner?
 		corpus_list = functions.read_file("./exercise3/data/corpus.txt")
 		corpus_list = corpus_list.split("\n")[1:]
 		self.agent.set("corpus_list", corpus_list)
-		self.agent.set("oppo_corpus_list", corpus_list)
+		oppo_corpus_list = functions.read_file("./exercise3/data/corpus.txt")
+		oppo_corpus_list = oppo_corpus_list.split("\n")[1:]
+		self.agent.set("oppo_corpus_list", oppo_corpus_list)
 		self.agent.set("oppo_query", [])
 		self.agent.set("know_oppo_query", False)
 		# Load the lda_model
 		lda_model = gensim.models.LdaMulticore.load("./model/lda_model_corpus")
 		self.agent.set("lda_model", lda_model)
 		self.agent.set("reward", 0)
+		self.agent.set("eval_reward", (0,0))
 		# Move to next state
 		self.set_next_state(STATE_AWAIT_DOC)
 
@@ -77,6 +80,10 @@ class AwaitDocState(State):
 				msg_auctioneer = msg
 				msg = await self.receive(timeout=sys.float_info.max)
 				await self.info_retrieval(msg)
+				if self.agent.get("strategy") == "reward_orient":
+					while len(self.agent.get("query")) < 3:
+						msg = await self.receive(timeout=sys.float_info.max)
+						await self.info_retrieval(msg)
 				await self.auction(msg_auctioneer)
 			# Start auction
 			elif str(msg.sender) == self.agent.get("auctioneer"):
@@ -89,7 +96,6 @@ class AwaitDocState(State):
 				await self.auction(msg)
 			# Make information_retrieval
 			else:
-				#print("failed")
 				await self.info_retrieval(msg)
 
 	# Process to handle information retrieval and answer the queries from the questioner
@@ -107,18 +113,20 @@ class AwaitDocState(State):
 			dct, database = self.agent.get("dct_database")
 			distances = helpfunc.get_distances(corpus_titles=self.agent.get("corpus_list"), query_title=msg.body, lda_model=lda_model, database_all=database)
 			#print(distances)
-			documents = helpfunc.get_discrepancy(distances, self.agent.get("corpus_list"), database, msg.body)
+			documents = helpfunc.get_discrepancy(distances, self.agent.get("corpus_list"), database, self.agent.get("query"), dct)
 
-			msg = msg.make_reply()  # TODO: better human answering --> komplette anpassung der Nachricht
+			msg = msg.make_reply()
 			msg.body = "Titel of some wonderful documents <" + str(documents) + ">"
-			await self.send(msg) #TODO: Problem with catching auction messages
+			await self.send(msg)
 			msg = await self.receive(timeout=sys.float_info.max)
 			if str(msg.sender) == self.agent.get("auctioneer"):
 				self.agent.get("auct_msg_list").append(msg)
 				msg = await self.receive(timeout=sys.float_info.max)
 			reward = str(msg.body).split("<")[1].split(">")[0]
-			print(reward)
+			#print(reward)
 			self.agent.set("reward", self.agent.get("reward") + int(reward))
+			x,y = self.agent.get("eval_reward")
+			self.agent.set("eval_reward", (x+1, y + int(reward)/10))
 			self.set_next_state(STATE_AWAIT_DOC)
 
 	# Process to handle the auction
@@ -137,24 +145,18 @@ class AwaitDocState(State):
 			# Append the document to the corpus_list
 			self.agent.get("corpus_list").append(buy_doc)
 			self.agent.get("oppo_corpus_list").append(buy_doc)
-			if buy_doc in self.agent.get("query"):
-				price = 10
-			else:
-				# Calculate the tf_idf on the corpus with the new document
-				dct, database = self.agent.get("dct_database")
-				score = helpfunc.calculate_score(dct, database, self.agent.get("corpus_list"), self.agent.get("query"), buy_doc)
-				opponent_score = 0
-				if self.agent.get("oppo_query"):
-					for li in self.agent.get("oppo_query"):
-						opp_score = helpfunc.calculate_score(dct, database, self.agent.get("oppo_corpus_list"), li, buy_doc)
-						opponent_score = max(opponent_score, opp_score)
-				#print(score, opponent_score, self.agent.name)
-				# TODO: Pricefkt wie am besten gestalten
+			# Calculate the tf_idf on the corpus with the new document
+			dct, database = self.agent.get("dct_database")
+			score = helpfunc.calculate_score(dct, database, self.agent.get("corpus_list"), self.agent.get("query"), buy_doc)
+			opponent_score = 0
+			if self.agent.get("oppo_query"):
+				for li in self.agent.get("oppo_query"):
+					opp_score = helpfunc.calculate_score(dct, database, self.agent.get("oppo_corpus_list"), li, buy_doc)
+					opponent_score = max(opponent_score, opp_score)
+			distances = helpfunc.get_distances(corpus_titles=self.agent.get("corpus_list"), query_title=self.agent.get("query")[0],
+											   lda_model=self.agent.get("lda_model"), database_all=database)
 
-				distances = helpfunc.get_distances(corpus_titles=self.agent.get("corpus_list"), query_title=self.agent.get("query")[0],
-												   lda_model=self.agent.get("lda_model"), database_all=database)
-
-				price = helpfunc.get_value(score, opponent_score, self.agent.get("strategy"), distances, buy_doc)
+			price = helpfunc.get_value(score, opponent_score, self.agent.get("strategy"), distances, buy_doc)
 			# Send message with the price to the auctioneer
 			msg = Message(to=self.agent.get("auctioneer"))
 			msg.body = str(price)
@@ -175,9 +177,11 @@ class AwaitWinState(State):
 			self.agent.get("msg_list").append(msg)
 			msg = await self.receive(timeout=sys.float_info.max)
 		# The bidder not the winner -> remove document from the corpus_list
-		if self.agent.name not in msg.body:
+		if "Eject" in msg.body:
 			self.agent.get("corpus_list").pop()
-			# TODO: Gegnerbased update
+			self.agent.get("oppo_corpus_list").pop()
+		elif self.agent.name not in msg.body:
+			self.agent.get("corpus_list").pop()
 
 			dct, database = self.agent.get("dct_database")
 			if not self.agent.get("know_oppo_query"):
@@ -186,27 +190,21 @@ class AwaitWinState(State):
 					poss_query = functions.read_file("./exercise3/data/" + li + ".txt")
 					poss_query = poss_query.split("\n")[1:]
 					score = helpfunc.calculate_score(dct, database, self.agent.get("oppo_corpus_list"), poss_query, self.agent.get("buy_doc"))
+					# print(score, self.agent.name, li)
 					if score > 0.015:
 						new_op_corpus.append(li)
 				self.agent.set("competitor_sets", new_op_corpus)
-				if len(new_op_corpus) == 1:
+				if len(new_op_corpus) == 0:
+					self.agent.set("competitor_sets", self.agent.get("competitor_sets_all"))
 					new_op_corpus_c = []
 					for li in self.agent.get("competitor_sets_all"):
 						poss_query = functions.read_file("./exercise3/data/" + li + ".txt")
 						poss_query = poss_query.split("\n")[1:]
 						score = helpfunc.calculate_score(dct, database, self.agent.get("oppo_corpus_list"), poss_query,
 														 self.agent.get("buy_doc"))
-						if score > 0.01:  # Toleranz? normal 0.015
+						if score > 0.015:
 							new_op_corpus_c.append(li)
-					if new_op_corpus == new_op_corpus_c:
-						self.agent.set("know_oppo_query", True)
-					else:
-						self.agent.set("competitor_sets", new_op_corpus_c)
-				elif len(new_op_corpus) == 0:
-					self.agent.set("competitor_sets", self.agent.get("competitor_sets_all"))
-				# ermitteln der gegnerischen query
-			#lda_model = helpfunc.create_new_model(dct, database, self.agent.get("oppo_corpus_list"))
-			#self.agent.set("oppo_lda_model", lda_model)
+					self.agent.set("competitor_sets", new_op_corpus_c)
 			query = []
 			for li in self.agent.get("competitor_sets"):
 				tmp_query = functions.read_file("./exercise3/data/" + li + ".txt")
@@ -229,9 +227,21 @@ class EndState(State):
 		""" For debugging purpose or to keep track on the current state:
 		print("End state: Goodbye to auction") """
 		print("End state (", self.agent.name, ")")
-		print(self.agent.get("competitor_sets"))
-		print(self.agent.get("query"))
-		print(self.agent.get("reward"))
+		# print(self.agent.get("corpus_list"))
+		msg = Message(to=self.agent.get("opp"))
+		msg.body = self.agent.get("queries_file")
+		await self.send(msg)
+
+		msg = await self.receive(timeout=sys.float_info.max)
+		print("yay") # TODO: Berechnen welche er von der eigenen Query bekommen hat?
+		if msg.body in self.agent.get("competitor_sets"):
+			print("The agent was on the right track to find the opponents query:", self.agent.get("competitor_sets"))
+		else:
+			print("The agent has guessed wrong and didn't achieved to get the right opponents query:", self.agent.get("competitor_sets"))
+		#print(self.agent.get("query"))
+		times, value = self.agent.get("eval_reward")
+		print("Evaluation for the reward the agent got: With a rewardscore of", self.agent.get("reward"), "the agent",
+			  self.agent.name, "got", value/times, "of the possible rewards.")
 
 class IRAgent(Agent):
 	async def setup(self):
